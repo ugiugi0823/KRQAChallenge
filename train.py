@@ -57,6 +57,8 @@ def load_model(model_id, local_rank):
     return model
 
 def main(args):
+    os.environ['TRANSFORMERS_CACHE'] = './model_cache'
+    os.environ['HF_HOME'] = './model_cache'
     local_rank = setup_distributed()
     
     # model_id = "nlpai-lab/KULLM3"
