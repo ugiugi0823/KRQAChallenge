@@ -26,7 +26,10 @@ def setup_distributed():
     return local_rank
 
 def setup_tokenizer(model_id):
-    tokenizer = AutoTokenizer.from_pretrained(model_id)
+    cache_dir = "./model_cache"  # 현재 디렉토리 내의 새 폴더
+    os.makedirs(cache_dir, exist_ok=True)
+    
+    tokenizer = AutoTokenizer.from_pretrained(model_id, cache_dir=cache_dir)
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     print(f"Original padding side for {model_id}: {tokenizer.padding_side}")
@@ -34,6 +37,8 @@ def setup_tokenizer(model_id):
     return tokenizer
 
 def load_model(model_id, local_rank):
+    cache_dir = "./model_cache"  # 현재 디렉토리 내의 새 폴더
+    os.makedirs(cache_dir, exist_ok=True)
     
     bnb_config = BitsAndBytesConfig(
         load_in_4bit=True,
@@ -46,7 +51,8 @@ def load_model(model_id, local_rank):
         model_id,
         quantization_config=bnb_config,
         device_map={"": local_rank},
-        trust_remote_code=True
+        trust_remote_code=True,
+        cache_dir=cache_dir  # 캐시 디렉토리 지정
     )
     return model
 
@@ -76,7 +82,7 @@ def main(args):
     dataset = load_dataset('csv', data_files={'train': args.train_path})
     dataset = dataset['train'].train_test_split(test_size=10, shuffle=True)
     
-    train_dataset = dataset['train'].shuffle(seed=42).select(range(2700))
+    train_dataset = dataset['train'].shuffle(seed=42).select(range(2000))
     print("🧐"*40)
     print(len(train_dataset))
     
