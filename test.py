@@ -10,6 +10,7 @@ import torch
 from transformers import (
     AutoTokenizer,
     AutoModelForCausalLM,
+    BitsAndBytesConfig
 )
 from peft import PeftModel, PeftConfig
 from accelerate import Accelerator
@@ -50,7 +51,7 @@ def normalize_answer(s):
 def generate_response(model, tokenizer, question_prompt):
     inputs = tokenizer(question_prompt, return_tensors="pt").to(model.device)
     with torch.no_grad():
-        outputs = model.generate(**inputs, max_new_tokens=50, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
+        outputs = model.generate(**inputs, max_new_tokens=20, num_return_sequences=1, pad_token_id=tokenizer.eos_token_id)
     response = tokenizer.decode(outputs[0], skip_special_tokens=True)
     
     # 응답에서 "Answer:" 이후의 텍스트만 추출
@@ -59,7 +60,7 @@ def generate_response(model, tokenizer, question_prompt):
         # 첫 문장 또는 최대 30단어만 유지
         response = ' '.join(response.split()[:30])
         # 추가 지시사항이나 다음 질문의 시작점 제거
-        for cut_point in ["Question:", "Context:", "Instructions:", "⊙"]:
+        for cut_point in ["Question:", "Context:", "Instructions:", "⊙", "Confidence:", "신뢰도:","설명:", "Explanation:", "Question"]:
             if cut_point in response:
                 response = response.split(cut_point, 1)[0]
     return response.strip()
@@ -72,6 +73,17 @@ def main(args):
     model_id = f"{path_parts[5]}/{path_parts[6]}"
     print(model_id)
     print("🌊"*40)
+    asia_timezone = pytz.timezone('Asia/Seoul')
+    current_time = datetime.now(asia_timezone).strftime("%Y%m%d_%H%M%S")
+    
+    submission_folder = f'./data/sub/{model_id}'
+    os.makedirs(submission_folder, exist_ok=True)
+    
+    script_name = os.path.basename(__file__)
+    script_path = os.path.join(submission_folder, f"{current_time}_{script_name}")
+    with open(__file__, 'r') as source_file, open(script_path, 'w') as target_file:
+        target_file.write(source_file.read())
+    print(f"스크립트가 {script_path}에 저장되었습니다.")
     
     # 기본 모델 로드
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=torch.bfloat16)
@@ -97,13 +109,19 @@ def main(args):
             id = row['id']
             if context is not None and question is not None:
                 # 지시사항을 포함한 프롬프트 생성
-                instruction = "Please answer briefly in one or two sentences."
+                instruction = "Please always answer one word"
                 question_prompt = f"Context: {context}\nQuestion: {question}\nInstructions: {instruction}\nAnswer:"
                 answer = generate_response(model, tokenizer, question_prompt)
+                print(f"ID: {id}")
+                print(f"Question: {question}")
+                print(f"Answer: {answer}")
+                print("-" * 50)  # 구분선 추가
                 
                 # NaN 또는 null 값 체크
                 if pd.isna(answer) or answer == '' or answer is None:
                     print("🧊🧊🧊🧊 Not good!🧊🧊🧊🧊")
+                    print(f"Retried Answer: {answer}")
+                    print("-" * 50)
                     # 한 번 더 시도
                     answer = generate_response(model, tokenizer, question_prompt)
                 
@@ -117,10 +135,7 @@ def main(args):
     # 제출 파일 생성
     df = pd.DataFrame(list(submission_dict.items()), columns=['id', 'answer'])
     
-    asia_timezone = pytz.timezone('Asia/Seoul')
-    current_time = datetime.now(asia_timezone).strftime("%Y%m%d_%H%M%S")
     
-    submission_folder = f'./data/sub/{model_id}'
     os.makedirs(submission_folder, exist_ok=True)
     peft_model_dir_name = os.path.basename(peft_model_path)
     submission_filename = os.path.join(submission_folder, f'sub_{current_time}_{path_parts[5]}_{path_parts[6]}_{path_parts[7]}_{peft_model_dir_name}.csv')
